@@ -6,7 +6,7 @@
 
 #--------------------------------------------------------------------------------------#
 
-rm(list=ls())
+rm(list = ls())
 
 #--------------------------------------------------------------------------------------#
 ####                                  LIBRARIES                                     ####
@@ -22,8 +22,6 @@ library(COCONUT)
 library(R.utils)
 library(caret)
 library(glmnet)
-library(parallel)   
-library(doParallel)
 library(foreach)
 library(yardstick)
 library(tableone)
@@ -528,7 +526,7 @@ train_Control <- trainControl(
   verboseIter = TRUE,
   savePredictions = TRUE,
   returnResamp = "final",
-  allowParallel = TRUE
+  allowParallel = FALSE
 )
 
 #------------------------------------------------------------------------------------------#
