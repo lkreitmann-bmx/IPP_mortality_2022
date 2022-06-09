@@ -33,6 +33,7 @@ library(cowplot)
 
 GENEXP_LIST = readRDS("GENEXP_LIST.RDS")
 PHENO_LIST = readRDS("PHENO_LIST.RDS")
+df_cohorts = readRDS("df_cohorts.RDS")
 IPP_v6 = c("GNLY", "CTLA4", "ZAP70", "OAS2", "CD177", "CIITA", "TAP2", "BPGM", "C3AR1", 
            "TDRD9", "CD74", "MDC1", "TNF", "ADGRE3", "CCNB1IP1", "CD3D", "IL10", "CX3CR1", 
            "CD274", "IL7R", "IL1RN", "CXCL10", "IFNG", "IL1R2", "S100A9", "ARL14EP", 
@@ -163,9 +164,6 @@ plot_Models_perf_2 = function(Res_models, data_test = df_cases_test_2, title = N
     mutate(dataset = "train")
   
   plot = train_all %>% 
-    # mutate(model_name = factor(model_name, levels = modsLabels),
-    #        dataset = factor(dataset, levels = c("train", "test")),
-    #        metric = factor(metric, levels = c("AUROC", "AUPRC"))) %>% 
     ggplot(aes(x = model_name, y = value)) + 
     theme_bw() +
     theme(axis.title.x = element_blank(), 
@@ -377,6 +375,9 @@ COCO_dotplot = function(COCO_studies, genes_select){
 COCOin  = imap(GENEXP_LIST, ~ build_COCONUT_input_tp_2(.y, GENEXP_LIST, PHENO_LIST, tp = 1))
 COCOout = COCONUT(COCOin, control.0.col = "sepsis", byPlatform = FALSE)
 
+# define all_genes_d1 (useful for later)
+all_genes_d1 = COCOout$controlList$bayesParams$gamma.star %>% colnames
+
 ## build matrix of predictors
 df_cases_1 = COCOout$COCONUTList %>% 
   map_dfc(~ .x$genes) %>% # gather all cases after co-normalization
@@ -439,6 +440,9 @@ studies_in = setdiff(studies, studies_to_remove_tp)
 ## run COCONUT
 COCOin  = imap(GENEXP_LIST[studies_in], ~ build_COCONUT_input_tp_2(.y, GENEXP_LIST, PHENO_LIST, tp = tp))
 COCOout = COCONUT(COCOin, control.0.col = "sepsis", byPlatform = FALSE)
+
+# define all_genes_d3_7 (useful for later)
+all_genes_d3_7 = COCOout$controlList$bayesParams$gamma.star %>% colnames
 
 ## build matrix of predictors
 df_cases_2 = COCOout$COCONUTList %>%
@@ -509,7 +513,7 @@ set.seed(123)
 modsLabels = c("Ridge", "Lasso", "Elastic_Net", "PLS", "RF", "Radial_SVM") 
 mod = NULL
 k_fold = 10
-r_repet = 5
+r_repet = 3
 preProc = c("center","scale")
 samplingOpt = NULL
 # samplingOpt = "smote"
@@ -526,7 +530,7 @@ train_Control <- trainControl(
   verboseIter = TRUE,
   savePredictions = TRUE,
   returnResamp = "final",
-  allowParallel = FALSE
+  allowParallel = TRUE
 )
 
 #------------------------------------------------------------------------------------------#
@@ -538,41 +542,41 @@ genes = IPP_v6
 data = df_cases_train_1 %>% select(all_of(genes), y_died)
 
 ## Ridge
-tune_Grid = expand.grid(.alpha = 0, .lambda = seq(0.05, 2, length = 5))
-MOD_IPP_d1$Ridge = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet", 
-                         trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+tune_Grid = expand.grid(.alpha = 0, .lambda = seq(0.05, 2, length = 10))
+MOD_IPP_d1$Ridge = caret::train(y_died ~., data = data, metric = metric, method = "glmnet", 
+                                trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_IPP_d1$Ridge)
 
 ## Lasso
-tune_Grid = expand.grid(alpha = 1, lambda = seq(0.000001, 0.05, length = 40))
-MOD_IPP_d1$Lasso = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+tune_Grid = expand.grid(alpha = 1, lambda = seq(0.000001, 0.05, length = 20))
+MOD_IPP_d1$Lasso = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_IPP_d1$Lasso)
 
 ## EN
 tune_Grid = expand.grid(alpha = seq(0.1, 0.9, length = 10),
                         lambda = seq(0.00001, 0.005, length = 10))
-MOD_IPP_d1$ElasticNet = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet", 
-                              trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_IPP_d1$ElasticNet = caret::train(y_died ~., data = data, metric = metric, method = "glmnet", 
+                                     trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_IPP_d1$ElasticNet)
 
 ##  PLS
-MOD_IPP_d1$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = 'AUROC',
-                       tuneLength  = 6, trControl = train_Control, preProcess = preProc)
+MOD_IPP_d1$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = metric,
+                              tuneLength  = 6, trControl = train_Control, preProcess = preProc)
 plot(MOD_IPP_d1$PLS)
 
 ## RF
 mtry = sqrt(ncol(data))
 tune_Grid = expand.grid(.mtry = 2:sqrt(ncol(data)))
-MOD_IPP_d1$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = 'AUROC',
-                      tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
+MOD_IPP_d1$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = metric,
+                             tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
 plot(MOD_IPP_d1$RF)
 
 ## SVM 
 tune_Grid = expand.grid(C = seq(0.001, 10, length = 4),
                         sigma = 10^seq(-3.5, -2, length = 4))
-MOD_IPP_d1$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = "AUROC",
-                              trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
+MOD_IPP_d1$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = metric,
+                                     trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
 plot(MOD_IPP_d1$Radial_SVM)
 
 #------------------------------------------------------------------------------------------#
@@ -580,49 +584,46 @@ plot(MOD_IPP_d1$Radial_SVM)
 #------------------------------------------------------------------------------------------#
 
 MOD_all_d1 = NULL
-all_genes = COCOout$controlList$bayesParams$gamma.star %>% colnames
-genes = all_genes
+genes = all_genes_d1
 data = df_cases_train_1 %>% select(all_of(genes), y_died)
 
 ## Ridge
 tune_Grid = expand.grid(.alpha = 0, .lambda = 10^seq(-5, 1, length = 10))
-MOD_all_d1$Ridge = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_all_d1$Ridge = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_all_d1$Ridge)
 
 ## Lasso
 tune_Grid = expand.grid(alpha = 1, lambda = seq(0.01, 0.05, length = 10))
-MOD_all_d1$Lasso = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid)
+MOD_all_d1$Lasso = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                trControl = train_Control, tuneGrid = tune_Grid)
 plot(MOD_all_d1$Lasso)
 
 ## EN
 tune_Grid = expand.grid(alpha = seq(0.15, 0.9, length = 7),
                         lambda = seq(0.00001, 0.05, length = 6))
-MOD_all_d1$ElasticNet = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                              trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_all_d1$ElasticNet = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                     trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_all_d1$ElasticNet)
 
 ##  PLS
 MOD_all_d1$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = 'AUROC',
-                       tuneLength  = 10, trControl = train_Control, preProcess = preProc)
+                              tuneLength  = 10, trControl = train_Control, preProcess = preProc)
 plot(MOD_all_d1$PLS)
 
 ## RF
 mtry = sqrt(ncol(data))
 tune_Grid = expand.grid(.mtry = 2:mtry)
 MOD_all_d1$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = 'AUROC',
-                      tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
+                             tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
 plot(MOD_all_d1$RF)
 
 ## SVM 
 tune_Grid = expand.grid(C = seq(0.001, 10, length = 4),
                         sigma = 10^seq(-6, -2, length = 4))
-MOD_all_d1$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = "AUROC",
-                              trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
+MOD_all_d1$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = metric,
+                                     trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
 plot(MOD_all_d1$Radial_SVM)
-
-# alternatively this can be done in Python (much faster)
 
 #------------------------------------------------------------------------------------------#
 ######                              MODEL top 29 genes tp = 1                         ######
@@ -637,40 +638,40 @@ data = df_cases_train_1 %>% select(all_of(genes), y_died)
 
 ## Ridge
 tune_Grid = expand.grid(.alpha = 0, .lambda = seq(0.05, 2, length = 5))
-MOD_top29_d1$Ridge = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_top29_d1$Ridge = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                  trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_top29_d1$Ridge)
 
 ## Lasso
 tune_Grid = expand.grid(alpha = 1, lambda = seq(0.000001, 0.05, length = 40))
-MOD_top29_d1$Lasso = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_top29_d1$Lasso = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                  trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_top29_d1$Lasso)
 
 ## EN
 tune_Grid = expand.grid(alpha = seq(0.1, 0.9, length = 10),
                         lambda = seq(0.00001, 0.005, length = 10))
-MOD_top29_d1$ElasticNet = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                              trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_top29_d1$ElasticNet = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                       trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_top29_d1$ElasticNet)
 
 ##  PLS
-MOD_top29_d1$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = 'AUROC',
-                       tuneLength  = 6, trControl = train_Control, preProcess = preProc)
+MOD_top29_d1$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = metric,
+                                tuneLength  = 6, trControl = train_Control, preProcess = preProc)
 plot(MOD_top29_d1$PLS)
 
 ## RF
 mtry = sqrt(ncol(data))
 tune_Grid = expand.grid(.mtry = 2:sqrt(ncol(data)))
-MOD_top29_d1$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = 'AUROC',
-                      tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
+MOD_top29_d1$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = metric,
+                               tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
 plot(MOD_top29_d1$RF)
 
 ## SVM 
 tune_Grid = expand.grid(C = seq(0.001, 10, length = 4),
                         sigma = 10^seq(-3.5, -2, length = 4))
-MOD_top29_d1$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = "AUROC",
-                              trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
+MOD_top29_d1$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = metric,
+                                       trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
 plot(MOD_top29_d1$Radial_SVM)
 
 #------------------------------------------------------------------------------------------#
@@ -682,41 +683,41 @@ genes = IPP_v6
 data = df_cases_train_2 %>% select(all_of(genes), y_died)
 
 ## Ridge
-tune_Grid = expand.grid(.alpha = 0, .lambda = seq(0,01, 2, length = 10))
-MOD_IPP_d3_7$Ridge = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid)
+tune_Grid = expand.grid(.alpha = 0, .lambda = seq(0.01, 2, length = 10))
+MOD_IPP_d3_7$Ridge = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                  trControl = train_Control, tuneGrid = tune_Grid)
 plot(MOD_IPP_d3_7$Ridge)
 
 ## Lasso
 tune_Grid = expand.grid(alpha = 1, lambda = seq(0.000001, 0.2, length = 10))
-MOD_IPP_d3_7$Lasso = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                         trControl = train_Control, tuneGrid = tune_Grid)
+MOD_IPP_d3_7$Lasso = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                  trControl = train_Control, tuneGrid = tune_Grid)
 plot(MOD_IPP_d3_7$Lasso)
 
 ## EN
 tune_Grid = expand.grid(alpha = seq(0.1, 0.9, length = 10),
-                        lambda = seq(0.00001, 0.3, length = 10))
-MOD_IPP_d3_7$ElasticNet = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                              trControl = train_Control, tuneGrid = tune_Grid)
+                        lambda = seq(0.00001, 0.01, length = 10))
+MOD_IPP_d3_7$ElasticNet = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                       trControl = train_Control, tuneGrid = tune_Grid)
 plot(MOD_IPP_d3_7$ElasticNet)
 
 ##  PLS
-MOD_IPP_d3_7$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = 'AUROC',
-                       tuneLength  = 6, trControl = train_Control, preProcess = preProc)
+MOD_IPP_d3_7$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = metric,
+                                tuneLength  = 6, trControl = train_Control, preProcess = preProc)
 plot(MOD_IPP_d3_7$PLS)
 
 ## RF
 mtry = sqrt(ncol(data))
 tune_Grid = expand.grid(.mtry = 2:mtry)
-MOD_IPP_d3_7$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = 'AUROC', tuneGrid = tune_Grid, 
-                      trControl = train_Control, preProcess = preProc)
+MOD_IPP_d3_7$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = metric, tuneGrid = tune_Grid, 
+                               trControl = train_Control, preProcess = preProc)
 plot(MOD_IPP_d3_7$RF)
 
 ## SVM 
 tune_Grid = expand.grid(C = seq(0.001, 10, length = 4),
                         sigma = 10^seq(-5, -3, length = 4))
-MOD_IPP_d3_7$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = "AUROC",
-                              trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
+MOD_IPP_d3_7$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = metric,
+                                       trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
 plot(MOD_IPP_d3_7$Radial_SVM)
 
 #------------------------------------------------------------------------------------------#
@@ -730,40 +731,40 @@ data = df_cases_train_1 %>% select(all_of(genes), y_died)
 
 ## Ridge
 tune_Grid = expand.grid(.alpha = 0, .lambda = 10^seq(-5, 1, length = 10))
-MOD_all_d3_7$Ridge = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                                trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_all_d3_7$Ridge = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                  trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_all_d3_7$Ridge)
 
 ## Lasso
 tune_Grid = expand.grid(alpha = 1, lambda = seq(0.01, 0.05, length = 10))
-MOD_all_d3_7$Lasso = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                                trControl = train_Control, tuneGrid = tune_Grid)
+MOD_all_d3_7$Lasso = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                  trControl = train_Control, tuneGrid = tune_Grid)
 plot(MOD_all_d3_7$Lasso)
 
 ## EN
 tune_Grid = expand.grid(alpha = seq(0.15, 0.9, length = 7),
                         lambda = seq(0.00001, 0.05, length = 6))
-MOD_all_d3_7$ElasticNet = caret::train(y_died ~., data = data, metric = "AUROC", method = "glmnet",
-                                     trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
+MOD_all_d3_7$ElasticNet = caret::train(y_died ~., data = data, metric = metric, method = "glmnet",
+                                       trControl = train_Control, tuneGrid = tune_Grid, preProcess = preProc)
 plot(MOD_all_d3_7$ElasticNet)
 
 ##  PLS
-MOD_all_d3_7$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = 'AUROC',
-                              tuneLength  = 10, trControl = train_Control, preProcess = preProc)
+MOD_all_d3_7$PLS = caret::train(y_died ~ ., data = data, method = 'pls', metric = metric,
+                                tuneLength  = 10, trControl = train_Control, preProcess = preProc)
 plot(MOD_all_d3_7$PLS)
 
 ## RF
 mtry = sqrt(ncol(data))
 tune_Grid = expand.grid(.mtry = 2:mtry)
-MOD_all_d3_7$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = 'AUROC',
-                             tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
+MOD_all_d3_7$RF = caret::train(y_died ~ ., data = data, method = 'rf', metric = metric,
+                               tuneGrid = tune_Grid, trControl = train_Control, preProcess = preProc)
 plot(MOD_all_d3_7$RF)
 
 ## SVM 
 tune_Grid = expand.grid(C = seq(0.001, 10, length = 4),
                         sigma = 10^seq(-6, -2, length = 4))
-MOD_all_d3_7$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = "AUROC",
-                                     trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
+MOD_all_d3_7$Radial_SVM = caret::train(y_died ~., data = data, method = "svmRadial", metric = metric,
+                                       trControl = train_Control, preProcess = preProc, tuneGrid = tune_Grid)
 plot(MOD_all_d3_7$Radial_SVM)
 
 #--------------------------------------------------------------------------------------#
@@ -861,8 +862,8 @@ dat.ci1 <- data.frame(x = as.numeric(rownames(ciobj1)),
                       upper = ciobj1[, 3]) %>% as_tibble(rownames = "step") %>% 
   mutate(model = "roc_mod1")
 
-pred2 = predict(MOD_all_d1$RF, data_test, type = "prob") %>% mutate(y_died = data_test$y_died)
-roc_curve2 = pROC::roc(pred2, response = truth, predictor = pred, ci = TRUE)
+pred2 = predict(MOD_all_d1$Ridge, data_test, type = "prob") %>% mutate(y_died = data_test$y_died)
+roc_curve2 = pROC::roc(pred2$y_died, pred2$dead, ci = TRUE, plot = FALSE)
 ciobj2 <- pROC::ci.se(roc_curve2, specificities=seq(0, 1, l=25))
 dat.ci2 <- data.frame(x = as.numeric(rownames(ciobj2)),
                       lower = ciobj2[, 1],
@@ -902,7 +903,7 @@ fig_3 = pROC::ggroc(list("IPP" = roc_curve1, "all genes" = roc_curve2, "top 29 g
         legend.text = element_text(size=11),)
 
 for(i in c(1:3)){
-  p = p + 
+  fig_3 = fig_3 + 
     geom_ribbon(data = dat.ci_tot[[i]], 
                 aes(x = x, ymin = lower, ymax = upper),
                 fill = colors[i],
@@ -914,7 +915,7 @@ for(i in c(1:3)){
 ####                                      Figure 4                                  ####
 #--------------------------------------------------------------------------------------#
 
-data_test = df_cases_test_3
+data_test = df_cases_test_2
 
 pred1 = predict(MOD_IPP_d3_7$RF, data_test, type = "prob") %>% mutate(y_died = data_test$y_died)
 roc_curve1 = pROC::roc(pred1$y_died, pred1$dead, ci = TRUE, plot = FALSE)
@@ -953,7 +954,7 @@ fig_4 = pROC::ggroc(list("IPP" = roc_curve1, "all genes" = roc_curve2), size = 1
         legend.text = element_text(size=11),)
 
 for(i in c(1:2)){
-  p = p + 
+  fig_4 = fig_4 + 
     geom_ribbon(data = dat.ci_tot[[i]], 
                 aes(x = x, ymin = lower, ymax = upper),
                 fill = colors[i],
@@ -979,7 +980,7 @@ f_threshold = function(mod, df){
 # DAY 1
 df_pred = df_cases_test_1
 
-table_enrichment_d1 = MOD2_final$RF %>% predict(newdata = df_pred, type = "prob") %>% 
+table_enrichment_d1 = MOD_IPP_d1$RF %>% predict(newdata = df_pred, type = "prob") %>% 
   select(dead) %>% 
   mutate(y_died = df_pred$y_died) %>% 
   pROC::roc(data = .,
@@ -1000,7 +1001,7 @@ threshold = coords(table_enrichment_d1,
 threshold2 = coords(table_enrichment_d1, x = "best", best.method = "closest.topleft") %>% 
   pull(threshold)
 
-table_enrichment_d1 = MOD2_final$RF %>% predict(newdata = df_pred, type = "prob") %>% 
+table_enrichment_d1 = MOD_IPP_d1$RF %>% predict(newdata = df_pred, type = "prob") %>% 
   select(dead) %>% 
   mutate(y_died = df_pred$y_died) %>% 
   mutate(predict = ifelse(dead > threshold2, "High risk", "Low risk")) %>% 
@@ -1020,9 +1021,9 @@ table_enrichment_d1 = table_enrichment_d1 %>% mutate(prop_dead = prop_dead,
   mutate(timepoint = "day 1")
 
 # DAY >2
-df_pred = df_cases_test_3
+df_pred = df_cases_test_2
 
-table_enrichment_d3 = MOD10_def$RF %>% predict(newdata = df_pred, type = "prob") %>% 
+table_enrichment_d3 = MOD_IPP_d3_7$RF %>% predict(newdata = df_pred, type = "prob") %>% 
   select(dead) %>% 
   mutate(y_died = df_pred$y_died) %>% 
   pROC::roc(data = .,
@@ -1036,7 +1037,7 @@ table_enrichment_d3 = MOD10_def$RF %>% predict(newdata = df_pred, type = "prob")
 threshold2 = coords(table_enrichment_d3, x = "best", best.method = "closest.topleft") %>% 
   pull(threshold)
 
-table_enrichment_d3 = MOD10_def$RF %>% predict(newdata = df_pred, type = "prob") %>% 
+table_enrichment_d3 = MOD_IPP_d3_7$RF %>% predict(newdata = df_pred, type = "prob") %>% 
   select(dead) %>% 
   mutate(y_died = df_pred$y_died) %>% 
   mutate(predict = ifelse(dead > threshold2, "High risk", "Low risk")) %>% 
@@ -1061,13 +1062,6 @@ table_enrichment_tot = bind_rows(table_enrichment_d1, table_enrichment_d3) %>%
   mutate(prop_dead = 100*prop_dead) %>% 
   mutate(CI_half = 100*CI_half)
 
-my_plot = table_enrichment_tot %>% 
-  arrange(timepoint, predict) %>% 
-  mutate(
-    newXtick = as.character(1:n())
-  ) %>% 
-  mutate(annotations = c(rep(p1, 2), rep(p2, 2)))
-
 p1 = chisq.test(table_enrichment_tot %>%
                   filter(timepoint == "day 1") %>%
                   select(n, n_dead) %>%
@@ -1081,6 +1075,15 @@ p2 = fisher.test(table_enrichment_tot %>%
                    mutate(n_alive = n - n_dead) %>%
                    select(n_dead, n_alive)) %>%
   .$p.value
+
+my_plot = table_enrichment_tot %>% 
+  arrange(timepoint, predict) %>% 
+  mutate(
+    newXtick = as.character(1:n())
+  ) %>% 
+  mutate(annotations = c(rep(p1, 2), rep(p2, 2)))
+
+dodge = position_dodge(width=0.95)
 
 my_plot_1 = my_plot %>% 
   filter(timepoint == "day 1") %>% 
