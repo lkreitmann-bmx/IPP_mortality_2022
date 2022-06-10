@@ -1,2 +1,2 @@
 # IPP_mortality_2022
-Data set and code from paper on performance of the IPP gene set to predict sepsis mortality on publicly available microarray data sets
+Data set and code from paper looking at the performance of the Immune Profiling Panel (IPP) gene set, patented by bioMerieux, to predict sepsis mortality using publicly available microarray data sets. The IPP is a prototype for a multiplexed transcriptomic assay that uses the FilmArray® technology to quantify mRNA in whole blood. It has not been submitted for regulatory review but may someday be able to provide clinicians with timely information about the immune system of sepsis patients and potentially aid in selecting patients for tailored immuno-modulating therapies.
