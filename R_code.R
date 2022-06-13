@@ -489,7 +489,7 @@ df_cases_test_2 = trainIndex_2 %>% filter(TRAIN == FALSE)
 df_cases_train_2$y_died %>% table %>% prop.table()
 
 #------------------------------------------------------------------------------------------#
-######                                     INITIALIZE TUNING                                  ######
+######                                INITIALIZE TUNING                               ######
 #------------------------------------------------------------------------------------------#
 
 ## essential mySummary function
